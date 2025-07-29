@@ -6,6 +6,8 @@ from einops import rearrange, einsum
 import torch
 from torch import nn
 
+from .config import Config
+
 class SGD(torch.optim.Optimizer):
     def __init__(self, params, lr=1e-3):
         if lr < 0:
@@ -50,11 +52,11 @@ class AdamW(torch.optim.Optimizer):
                 state = self.state[p]
                 grad = p.grad.data
                 
-                m = state.get('m', torch.zeros_like(grad))
+                m = state.get('m', torch.zeros_like(grad).to(grad.device))
                 m = self.beta1 * m + (1 - self.beta1) * grad
                 state['m'] = m
 
-                v = state.get('v', torch.zeros_like(grad))
+                v = state.get('v', torch.zeros_like(grad).to(grad.device))
                 v = self.beta2 * v + (1 - self.beta2) * grad ** 2
                 state['v'] = v
 
@@ -84,3 +86,6 @@ def grad_clip(params, norm_limit, eps=1e-6):
             p.grad.data *= norm_limit / (norm + eps)
 
 
+if __name__ == '__main__':
+    config = Config()
+    lr_scheduler(0, config.lr_max, config.lr_min, config.warmup_iter_cnt, config.total_train_iter_cnt)

@@ -7,12 +7,8 @@ from torch import nn
 
 from .linear import Linear
 from .rope import RotaryPositionalEmbedding
+from .utils import softmax
 
-def softmax(d, dim):
-    d -= torch.max(d, dim=dim, keepdim=True)[0]
-    d_exp = torch.exp(d)
-    output = d_exp / d_exp.sum(dim=dim, keepdim=True)
-    return output
 
 def scaled_dot_product_attention(Q, K, V, mask=None):
     '''
@@ -20,15 +16,15 @@ def scaled_dot_product_attention(Q, K, V, mask=None):
     value: (..., seq_len, d_v)
     '''
     d_k = Q.shape[-1]
-    logit = einsum(Q, K, '... seq_len_query d_k, ... seq_len_key d_k -> ... seq_len_query seq_len_key') / torch.sqrt(torch.tensor(d_k))
+    logit = einsum(Q, K, '... seq_len_query d_k, ... seq_len_key d_k -> ... seq_len_query seq_len_key') / torch.sqrt(torch.tensor(d_k)).to(Q.device)
     if mask is not None:
-        logit -= (1 - mask.to(torch.int)) * 1e10
+        logit -= (1 - mask.to(torch.int).to(Q.device)) * 1e10
     score = softmax(logit, dim=-1)
     output = einsum(score, V, '... seq_len_query seq_len_key, ... seq_len_key d_v -> ... seq_len_query d_v')
     return output
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, d_model, num_heads, use_rope=False, theta=None, max_seq_len=None, token_position=None, device=None):
+    def __init__(self, d_model, num_heads, use_rope=False, theta=None, max_seq_len=None, token_position=None):
         super(MultiHeadAttention, self).__init__()
         self.d_model = d_model
         self.num_heads = num_heads
@@ -39,11 +35,10 @@ class MultiHeadAttention(nn.Module):
         self.o_proj = Linear(d_model, d_model)
         self.use_rope = use_rope
         if use_rope:
-            self.rope = RotaryPositionalEmbedding(theta, self.d_k, max_seq_len, device=device)
+            self.rope = RotaryPositionalEmbedding(theta, self.d_k, max_seq_len)
             self.token_position = token_position
         else:
             self.rope = None
-        self.device = device
     
     def split_multi_head(self, x):
         shape = x.shape
@@ -71,7 +66,7 @@ class MultiHeadAttention(nn.Module):
         ks = self.split_multi_head(K)
         vs = self.split_multi_head(V)
         mask = 1 - torch.triu(torch.ones(seq_len, seq_len), diagonal=1)
-        mask = mask.to(bool).to(self.device)
+        mask = mask.to(bool).to(x.device)
         if self.use_rope:
             qs_rope = self.rope(qs, self.token_position)
             ks_rope = self.rope(ks, self.token_position)

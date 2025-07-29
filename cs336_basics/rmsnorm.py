@@ -5,14 +5,13 @@ from einops import rearrange, einsum
 import torch
 from torch import nn
 
+
 class RMSNorm(nn.Module):
-    def __init__(self, d_model: int, eps: float = 1e-5, device: torch.device | None = None, dtype: torch.dtype | None = None):
+    def __init__(self, d_model: int, eps: float = 1e-5):
         super(RMSNorm, self).__init__()
         self.d_model = d_model
         self.eps = eps
-        self.device = device
-        self.dtype = dtype
-        weight = torch.ones(d_model, device=device, dtype=dtype)
+        weight = torch.ones(d_model)
         self.weight = nn.Parameter(weight)
     
     def forward(self, x):
@@ -23,3 +22,4 @@ class RMSNorm(nn.Module):
         x_norm = x / torch.sqrt(torch.mean(x * x, dim=-1, keepdim=True) + self.eps)
         output = x_norm * self.weight
         return output.to(input_dtype)
+

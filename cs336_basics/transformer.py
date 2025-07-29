@@ -12,16 +12,15 @@ from .feed_forward_net import SwiGLU
 from .attention import MultiHeadAttention
 
 class TransformerBlock(nn.Module):
-    def __init__(self, d_model, num_heads, d_ff, max_seq_len, theta, token_position=None, device=None, dtype=None):
+    def __init__(self, d_model, num_heads, d_ff, max_seq_len, theta, token_position=None):
         super(TransformerBlock, self).__init__()
         self.d_model = d_model
         self.num_heads = num_heads
         self.d_ff = d_ff
-        self.ffn = SwiGLU(d_model, d_ff, device=device, dtype=dtype)
-        self.norm1 = RMSNorm(d_model, eps=1e-5, device=device, dtype=dtype)
-        self.norm2 = RMSNorm(d_model, eps=1e-5, device=device, dtype=dtype)
-        self.attn = MultiHeadAttention(d_model, num_heads, True, theta, max_seq_len, token_position, device=device)
-        self.device = device
+        self.ffn = SwiGLU(d_model, d_ff)
+        self.norm1 = RMSNorm(d_model, eps=1e-5)
+        self.norm2 = RMSNorm(d_model, eps=1e-5)
+        self.attn = MultiHeadAttention(d_model, num_heads, True, theta, max_seq_len, token_position)
     
     def forward(self, x):
         res = self.norm1(x)
@@ -34,7 +33,7 @@ class TransformerBlock(nn.Module):
         return output
 
 class Transformer(nn.Module):
-    def __init__(self, vocab_size, context_length, d_model, d_ff, num_heads, num_layers, theta, device=None, dtype=None):
+    def __init__(self, vocab_size, context_length, d_model, d_ff, num_heads, num_layers, theta):
         super(Transformer, self).__init__()
         self.vocab_size = vocab_size
         self.max_seq_len = context_length
@@ -44,11 +43,11 @@ class Transformer(nn.Module):
         self.num_layers = num_layers
         self.theta = theta
 
-        self.emb = Embedding(num_embeddings=vocab_size, embedding_dim=d_model, device=device, dtype=dtype)
+        self.emb = Embedding(num_embeddings=vocab_size, embedding_dim=d_model)
         self.blocks = nn.ModuleList(
-            TransformerBlock(d_model, num_heads, d_ff, self.max_seq_len, theta, device=device, dtype=dtype) for i in range(num_layers)
+            TransformerBlock(d_model, num_heads, d_ff, self.max_seq_len, theta) for i in range(num_layers)
         )
-        self.norm_final = RMSNorm(d_model=d_model, eps=1e-5, device=device, dtype=dtype)
+        self.norm_final = RMSNorm(d_model=d_model, eps=1e-5)
         self.dense_final = Linear(d_model, vocab_size)
     
     def forward(self, inds):
@@ -74,7 +73,7 @@ if __name__ == '__main__':
         norm_cnt = d_model
         linear_final_cnt = d_model * vocab_size
         
-    #     linear_cnt = d_model * d_ff
+        # linear_cnt = d_model * d_ff
         rope_cnt = max_seq_len * d_model * 2
         attn_cnt = [d_model * d_model * 4, rope_cnt]
         attn_cnt = [d_model * d_model * 4]
