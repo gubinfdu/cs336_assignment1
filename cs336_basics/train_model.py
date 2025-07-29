@@ -38,15 +38,29 @@ def save_checkpoint(model, optimizer, iteration, out):
     store_data['iteration'] = iteration
     torch.save(store_data, out)
 
-def load_checkpoint(source, model, optimizer):
-    store_data = torch.load(source)
+# def load_checkpoint(source, model, optimizer):
+#     store_data = torch.load(source)
+#     model.load_state_dict(store_data['model'])
+#     optimizer.load_state_dict(store_data['optimizer'])
+#     return store_data['iteration']
+
+def load_checkpoint(source, model, optimizer, device=torch.device('cpu')):
+    store_data = torch.load(source, map_location=device)
     model.load_state_dict(store_data['model'])
     optimizer.load_state_dict(store_data['optimizer'])
     return store_data['iteration']
 
-def create_model(vocab_size, context_length, d_model, d_ff, num_heads, num_layers, theta, device=None, dtype=None):
-    model = Transformer(vocab_size, context_length, d_model, d_ff, num_heads, num_layers, theta, device=device, dtype=dtype)
+def create_model(vocab_size, context_length, d_model, d_ff, num_heads, num_layers, theta):
+    model = Transformer(vocab_size, context_length, d_model, d_ff, num_heads, num_layers, theta)
     return model
+
+# def reset_model(config, device):
+#     model = create_model(
+#         config.vocab_size, config.context_length, config.d_model, config.d_ff, config.num_heads, config.num_layers, config.theta
+#     )
+#     # model.to(torch.device('cuda'))
+#     model.to(device)
+#     return model
 
 def load_parameter(model, parameter_path):
     pass
@@ -106,6 +120,8 @@ def top_p_sampling(logit, top_p):
     logit: (vocab_size, )
     p: float, 0-1
     '''
+    if logit.dim() == 2:
+        logit = logit[0]
     score = softmax(logit, dim=-1)
     sort_score, sort_ind = torch.sort(score, dim=-1, descending=True)
     cum_score = torch.cumsum(sort_score, dim=-1)
@@ -123,17 +139,38 @@ def generate_token(model, x, max_gen_token_cnt, eos_token_id, temperature, top_p
     if x.dim() == 1:
         x = x[None, ]
     orig_seq_len = x.shape[1]
+    model.eval()
     with torch.no_grad():
-        for i in range(max_gen_token_cnt):
+        for i in tqdm.tqdm(range(max_gen_token_cnt)):
             output = model(x) # (batch_size, seq_len, vocab_size)
             logit = output[:, -1] # (batch_size, vocab_size)
             logit /= temperature
             sel_ind, sel_score = top_p_sampling(logit, top_p)
             token_id = sel_ind[torch.multinomial(sel_score, 1)]
-            x = torch.concat([x, torch.tensor([[token_id]])], dim=-1)
+            x = torch.concat([x, torch.unsqueeze(token_id, 0)], dim=-1)
             if token_id == eos_token_id:
                 break
     return x[:, orig_seq_len: ]
+
+def generate_text(config, model, parameter_path, device, orig_txt):
+    from . import bpe_tokenizer
+    from .utils import load_data
+    vocab = load_data('vocab_story.pkl')
+    merges = load_data('merges_story.pkl')
+    tokenizer = bpe_tokenizer.BPETokenizer(vocab, merges, special_tokens=['<|endoftext|>'])
+
+    x = tokenizer.encode(orig_txt)
+    x = torch.tensor(x)[None, ]
+    x = x.to(device)
+
+    optimizer = AdamW(model.parameters(), config.lr_max, config.weight_decay)
+    t = load_checkpoint(parameter_path, model, optimizer)
+    model.to(device)
+    # print (model.emb.weight)
+
+    token_ids = generate_token(model, x, 256, 256, 1)
+    text = tokenizer.decode(token_ids[0].to(cpu).numpy())
+    print (orig_txt + text)
 
 
 
@@ -141,11 +178,15 @@ def generate_token(model, x, max_gen_token_cnt, eos_token_id, temperature, top_p
 
 
 if __name__ == '__main__':
+    cpu = torch.device('cpu')
+    gpu = torch.device('mps')
     config = Config()
     model = create_model(
         config.vocab_size, config.context_length, config.d_model, config.d_ff, config.num_heads, config.num_layers, config.theta, 
-        device=config.device, dtype=config.dtype
     )
+    parameter_path = 'model_best.pt'
+    orig_txt = 'Once upon a time,' # [430, 439, 259, 398,  44]
+    generate_text(config, model, parameter_path, gpu, orig_txt)
 
     
 
