@@ -61,9 +61,12 @@ class AdamW(torch.optim.Optimizer):
                 state['v'] = v
 
                 t = state.get('t', 1)
-                alpha_t = lr * math.sqrt(1 - self.beta2 ** t) / (1 - self.beta1 ** t)
                 state['t'] = t + 1
-                p.data -= alpha_t * m / (torch.sqrt(v) + self.eps) + self.lr * self.lambda_ * p.data
+                mt = m / (1 - self.beta1 ** t)
+                vt = v / (1 - self.beta2 ** t)
+                p.data -= lr * mt / (torch.sqrt(vt) + self.eps) + lr * self.lambda_ * p.data
+                # alpha_t = lr * math.sqrt(1 - self.beta2 ** t) / (1 - self.beta1 ** t)
+                # p.data -= alpha_t * m / (torch.sqrt(v) + self.eps) + self.lr * self.lambda_ * p.data
         return loss
 
 def lr_scheduler(t, alpha_max, alpha_min, warmup_iter_cnt, cos_iter_cnt):
